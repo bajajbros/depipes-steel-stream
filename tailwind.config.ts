@@ -57,6 +57,17 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        industrial: {
+          steel: "hsl(var(--industrial-steel))",
+        },
+        hero: {
+          start: "hsl(var(--hero-gradient-start))",
+          end: "hsl(var(--hero-gradient-end))",
+        },
+      },
+      backgroundImage: {
+        'hero-gradient': 'linear-gradient(135deg, hsl(var(--hero-gradient-start)), hsl(var(--hero-gradient-end)))',
+        'section-pattern': 'linear-gradient(to bottom, hsl(var(--section-bg)), hsl(var(--background)))',
       },
       borderRadius: {
         lg: "var(--radius)",
