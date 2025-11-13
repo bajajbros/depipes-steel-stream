@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Navigation } from "./components/Navigation";
 import { Footer } from "./components/Footer";
 import { WhatsAppButton } from "./components/WhatsAppButton";
+import { ScrollToTop } from "./components/ScrollToTop";
 import Home from "./pages/Home";
 import About from "./pages/About";
 import Products from "./pages/Products";
@@ -38,6 +39,7 @@ const App = () => (
           </div>
           <Footer />
           <WhatsAppButton />
+          <ScrollToTop />
         </div>
       </BrowserRouter>
     </TooltipProvider>
