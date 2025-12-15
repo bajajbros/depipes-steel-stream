@@ -216,14 +216,14 @@ const AdminCategories = () => {
               <div className="space-y-2">
                 <Label htmlFor="parent">Parent Category (for subcategories)</Label>
                 <Select
-                  value={formData.parent_id}
-                  onValueChange={(value) => setFormData({ ...formData, parent_id: value })}
+                  value={formData.parent_id || "_none"}
+                  onValueChange={(value) => setFormData({ ...formData, parent_id: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="None (Top-level category)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None (Top-level category)</SelectItem>
+                    <SelectItem value="_none">None (Top-level category)</SelectItem>
                     {parentCategories.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         {cat.name}
