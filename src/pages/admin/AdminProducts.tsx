@@ -226,14 +226,14 @@ const AdminProducts = () => {
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
                 <Select
-                  value={formData.category_id}
-                  onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+                  value={formData.category_id || "_none"}
+                  onValueChange={(value) => setFormData({ ...formData, category_id: value === "_none" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {categories?.map((cat) => (
                       <SelectItem key={cat.id} value={cat.id}>
                         {cat.parent_id ? `  ↳ ${cat.name}` : cat.name}
