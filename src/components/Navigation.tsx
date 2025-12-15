@@ -2,12 +2,15 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Moon, Sun, Menu, Phone, Mail } from "lucide-react";
+import { Moon, Sun, Menu, Phone, Mail, ChevronDown } from "lucide-react";
+import { ProductsMegaMenu } from "./ProductsMegaMenu";
 
 export const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [showProductsMenu, setShowProductsMenu] = useState(false);
+  const [showMobileProducts, setShowMobileProducts] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -34,17 +37,16 @@ export const Navigation = () => {
   const navLinks = [
     { name: "Home", path: "/" },
     { name: "About Us", path: "/about" },
-    { name: "Products", path: "/products" },
+    { name: "Products", path: "/products", hasMenu: true },
     { name: "Certifications", path: "/certifications" },
     { name: "Clients", path: "/clients" },
     { name: "Contact", path: "/contact" },
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
 
   return (
     <>
-      {/* Top bar with contact info */}
       <div className="bg-primary text-primary-foreground py-2 text-sm">
         <div className="section-container flex justify-between items-center">
           <div className="flex items-center gap-4">
@@ -61,15 +63,9 @@ export const Navigation = () => {
         </div>
       </div>
 
-      {/* Main navigation */}
-      <header
-        className={`sticky top-0 z-50 transition-all duration-300 ${
-          isScrolled ? "bg-background/95 backdrop-blur-md shadow-md" : "bg-background"
-        }`}
-      >
+      <header className={`sticky top-0 z-50 transition-all duration-300 ${isScrolled ? "bg-background/95 backdrop-blur-md shadow-md" : "bg-background"}`}>
         <nav className="section-container py-4">
           <div className="flex items-center justify-between">
-            {/* Logo */}
             <Link to="/" className="flex items-center gap-3">
               <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
                 <span className="text-primary-foreground font-bold text-xl">DP</span>
@@ -80,25 +76,31 @@ export const Navigation = () => {
               </div>
             </Link>
 
-            {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-6">
               {navLinks.map((link) => (
-                <Link
+                <div
                   key={link.path}
-                  to={link.path}
-                  className={`font-medium transition-colors hover:text-primary ${
-                    isActive(link.path) ? "text-primary" : "text-foreground"
-                  }`}
+                  className="relative"
+                  onMouseEnter={() => link.hasMenu && setShowProductsMenu(true)}
+                  onMouseLeave={() => link.hasMenu && setShowProductsMenu(false)}
                 >
-                  {link.name}
-                </Link>
+                  <Link
+                    to={link.path}
+                    className={`font-medium transition-colors hover:text-primary flex items-center gap-1 ${isActive(link.path) ? "text-primary" : "text-foreground"}`}
+                  >
+                    {link.name}
+                    {link.hasMenu && <ChevronDown className="h-4 w-4" />}
+                  </Link>
+                  {link.hasMenu && showProductsMenu && (
+                    <ProductsMegaMenu onClose={() => setShowProductsMenu(false)} />
+                  )}
+                </div>
               ))}
               <Button onClick={toggleTheme} variant="ghost" size="icon">
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
             </div>
 
-            {/* Mobile Menu */}
             <div className="flex lg:hidden items-center gap-2">
               <Button onClick={toggleTheme} variant="ghost" size="icon">
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -110,18 +112,27 @@ export const Navigation = () => {
                   </Button>
                 </SheetTrigger>
                 <SheetContent>
-                  <div className="flex flex-col gap-6 mt-8">
+                  <div className="flex flex-col gap-4 mt-8">
                     {navLinks.map((link) => (
-                      <Link
-                        key={link.path}
-                        to={link.path}
-                        onClick={() => setIsOpen(false)}
-                        className={`text-lg font-medium transition-colors hover:text-primary ${
-                          isActive(link.path) ? "text-primary" : "text-foreground"
-                        }`}
-                      >
-                        {link.name}
-                      </Link>
+                      <div key={link.path}>
+                        <div className="flex items-center justify-between">
+                          <Link
+                            to={link.path}
+                            onClick={() => !link.hasMenu && setIsOpen(false)}
+                            className={`text-lg font-medium transition-colors hover:text-primary ${isActive(link.path) ? "text-primary" : "text-foreground"}`}
+                          >
+                            {link.name}
+                          </Link>
+                          {link.hasMenu && (
+                            <button onClick={() => setShowMobileProducts(!showMobileProducts)}>
+                              <ChevronDown className={`h-5 w-5 transition-transform ${showMobileProducts ? "rotate-180" : ""}`} />
+                            </button>
+                          )}
+                        </div>
+                        {link.hasMenu && showMobileProducts && (
+                          <ProductsMegaMenu onClose={() => setIsOpen(false)} isMobile />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </SheetContent>
