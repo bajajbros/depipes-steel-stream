@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import JSZip from "jszip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download, FolderArchive } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +57,8 @@ const AdminProducts = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingZip, setIsImportingZip] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatus, setImportStatus] = useState("");
   const [selectedParentCategory, setSelectedParentCategory] = useState<string>("");
   const resetForm = () => {
     setFormData({
@@ -300,26 +304,110 @@ const AdminProducts = () => {
     }
   };
 
+  const isImageFile = (filename: string): boolean => {
+    const ext = filename.toLowerCase().split(".").pop();
+    return ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "");
+  };
+
   const handleZipImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsImportingZip(true);
+    setImportProgress(0);
+    setImportStatus("Reading ZIP file...");
     const token = getToken();
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("token", token || "");
-      if (selectedParentCategory) {
-        formData.append("parentCategoryId", selectedParentCategory);
+      // Extract ZIP on client side
+      const zip = await JSZip.loadAsync(file);
+      
+      // Organize files by folder
+      const folderContents: Record<string, { path: string; file: JSZip.JSZipObject }[]> = {};
+      const rootImages: { path: string; file: JSZip.JSZipObject }[] = [];
+
+      for (const [path, zipEntry] of Object.entries(zip.files)) {
+        if (zipEntry.dir) continue;
+        if (!isImageFile(path)) continue;
+
+        const parts = path.split("/").filter(p => p);
+        
+        if (parts.length === 1) {
+          rootImages.push({ path, file: zipEntry });
+        } else {
+          const folderName = parts[0];
+          if (!folderContents[folderName]) {
+            folderContents[folderName] = [];
+          }
+          folderContents[folderName].push({ path, file: zipEntry });
+        }
       }
 
-      const { data, error } = await supabase.functions.invoke("import-zip", {
-        body: formData,
-      });
+      // Calculate total files
+      const allFiles: { path: string; file: JSZip.JSZipObject; categoryName: string | null }[] = [];
+      
+      for (const [folderName, images] of Object.entries(folderContents)) {
+        for (const img of images) {
+          allFiles.push({ ...img, categoryName: folderName });
+        }
+      }
+      for (const img of rootImages) {
+        allFiles.push({ ...img, categoryName: null });
+      }
 
-      if (error) throw error;
+      if (allFiles.length === 0) {
+        throw new Error("No image files found in ZIP");
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+      const createdCategories = new Set<string>();
+
+      // Upload each image one by one
+      for (let i = 0; i < allFiles.length; i++) {
+        const { path, file: zipEntry, categoryName } = allFiles[i];
+        const filename = path.split("/").pop()!;
+        const productName = filename.replace(/\.[^/.]+$/, "");
+
+        setImportStatus(`Uploading ${i + 1}/${allFiles.length}: ${productName}`);
+        setImportProgress(Math.round((i / allFiles.length) * 100));
+
+        try {
+          const blob = await zipEntry.async("blob");
+          const imageFile = new File([blob], filename, { type: `image/${filename.split(".").pop()?.toLowerCase() || "jpeg"}` });
+
+          const formData = new FormData();
+          formData.append("file", imageFile);
+          formData.append("token", token || "");
+          formData.append("productName", productName);
+          if (categoryName) {
+            formData.append("categoryName", categoryName);
+          }
+          if (selectedParentCategory) {
+            formData.append("parentCategoryId", selectedParentCategory);
+          }
+
+          const { data, error } = await supabase.functions.invoke("import-zip", {
+            body: formData,
+          });
+
+          if (error) {
+            failCount++;
+            console.error(`Failed to import ${productName}:`, error);
+          } else {
+            successCount++;
+            if (data.categoryCreated && categoryName) {
+              createdCategories.add(categoryName);
+            }
+          }
+        } catch (err) {
+          failCount++;
+          console.error(`Error processing ${filename}:`, err);
+        }
+      }
+
+      setImportProgress(100);
+      setImportStatus("");
 
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["product-categories"] });
@@ -327,12 +415,8 @@ const AdminProducts = () => {
 
       toast({
         title: "ZIP Import completed",
-        description: `Created ${data.categoriesCreated} categories, ${data.productsCreated} products. ${data.errors?.length > 0 ? `Errors: ${data.errors.length}` : ""}`,
+        description: `Created ${createdCategories.size} categories, ${successCount} products. ${failCount > 0 ? `Failed: ${failCount}` : ""}`,
       });
-
-      if (data.errors?.length > 0) {
-        console.log("Import errors:", data.errors);
-      }
     } catch (error: any) {
       toast({
         title: "Import failed",
@@ -341,6 +425,8 @@ const AdminProducts = () => {
       });
     } finally {
       setIsImportingZip(false);
+      setImportProgress(0);
+      setImportStatus("");
       if (zipInputRef.current) {
         zipInputRef.current.value = "";
       }
@@ -424,6 +510,12 @@ const AdminProducts = () => {
               Import ZIP
             </Button>
           </div>
+          {isImportingZip && (
+            <div className="w-full max-w-xs space-y-1">
+              <Progress value={importProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground truncate">{importStatus}</p>
+            </div>
+          )}
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) resetForm();
