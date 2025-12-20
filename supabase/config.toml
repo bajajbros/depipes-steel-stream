@@ -1,1 +1,10 @@
 project_id = "qxwpuuktvatrxxsprkko"
+
+[functions.admin-auth]
+verify_jwt = false
+
+[functions.admin-operations]
+verify_jwt = false
+
+[functions.import-zip]
+verify_jwt = false

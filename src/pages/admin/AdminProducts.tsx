@@ -11,7 +11,7 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download, FolderArchive } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,7 @@ const AdminProducts = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -53,7 +54,8 @@ const AdminProducts = () => {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-
+  const [isImportingZip, setIsImportingZip] = useState(false);
+  const [selectedParentCategory, setSelectedParentCategory] = useState<string>("");
   const resetForm = () => {
     setFormData({
       name: "",
@@ -298,6 +300,53 @@ const AdminProducts = () => {
     }
   };
 
+  const handleZipImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingZip(true);
+    const token = getToken();
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("token", token || "");
+      if (selectedParentCategory) {
+        formData.append("parentCategoryId", selectedParentCategory);
+      }
+
+      const { data, error } = await supabase.functions.invoke("import-zip", {
+        body: formData,
+      });
+
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["product-categories"] });
+      await queryClient.invalidateQueries({ queryKey: ["all-product-categories"] });
+
+      toast({
+        title: "ZIP Import completed",
+        description: `Created ${data.categoriesCreated} categories, ${data.productsCreated} products. ${data.errors?.length > 0 ? `Errors: ${data.errors.length}` : ""}`,
+      });
+
+      if (data.errors?.length > 0) {
+        console.log("Import errors:", data.errors);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Import failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImportingZip(false);
+      if (zipInputRef.current) {
+        zipInputRef.current.value = "";
+      }
+    }
+  };
+
   if (productsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -339,6 +388,42 @@ const AdminProducts = () => {
             )}
             Import CSV
           </Button>
+          <input
+            ref={zipInputRef}
+            type="file"
+            accept=".zip"
+            onChange={handleZipImport}
+            className="hidden"
+          />
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedParentCategory || "_none"}
+              onValueChange={(value) => setSelectedParentCategory(value === "_none" ? "" : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Parent category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">No parent</SelectItem>
+                {categories?.filter(c => !c.parent_id).map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button 
+              onClick={() => zipInputRef.current?.click()}
+              disabled={isImportingZip}
+            >
+              {isImportingZip ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FolderArchive className="h-4 w-4 mr-2" />
+              )}
+              Import ZIP
+            </Button>
+          </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) resetForm();
