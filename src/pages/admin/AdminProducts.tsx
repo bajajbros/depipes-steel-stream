@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Pencil, Trash2, Package } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,7 @@ const AdminProducts = () => {
   const { getToken } = useAdminAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -51,6 +52,7 @@ const AdminProducts = () => {
     sort_order: 0,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const resetForm = () => {
     setFormData({
@@ -164,6 +166,138 @@ const AdminProducts = () => {
     return category?.name || "Unknown";
   };
 
+  const generateSlugFromName = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  };
+
+  const downloadTemplate = () => {
+    const headers = ["name", "category_slug", "description", "specifications", "image_url", "is_featured", "sort_order"];
+    const exampleRows = [
+      ["K-7 DI Pipe 100mm", "di-pipes-fittings", "High-quality ductile iron pipe", "Size: 100mm, Class: K-7", "", "false", "1"],
+      ["CI Bend 90°", "ci-pipes-fittings", "Cast iron 90 degree bend", "Angle: 90°, Material: CI", "", "false", "2"],
+    ];
+    
+    const csvContent = [
+      headers.join(","),
+      ...exampleRows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products_template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const token = getToken();
+
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        throw new Error("CSV file must have a header row and at least one data row");
+      }
+
+      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+      const requiredHeaders = ["name"];
+      
+      for (const required of requiredHeaders) {
+        if (!headers.includes(required)) {
+          throw new Error(`Missing required column: ${required}`);
+        }
+      }
+
+      const products: any[] = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].match(/("([^"]*)"|[^,]*)/g)?.map(v => 
+          v.trim().replace(/^"|"$/g, "")
+        ) || [];
+        
+        if (values.length === 0 || !values[headers.indexOf("name")]) continue;
+
+        const name = values[headers.indexOf("name")] || "";
+        const categorySlug = values[headers.indexOf("category_slug")] || "";
+        
+        // Find category by slug
+        let categoryId = null;
+        if (categorySlug && categories) {
+          const category = categories.find(c => c.slug === categorySlug);
+          if (category) {
+            categoryId = category.id;
+          }
+        }
+
+        products.push({
+          name,
+          slug: generateSlugFromName(name),
+          category_id: categoryId,
+          description: values[headers.indexOf("description")] || null,
+          specifications: values[headers.indexOf("specifications")] || null,
+          image_url: values[headers.indexOf("image_url")] || null,
+          is_featured: values[headers.indexOf("is_featured")]?.toLowerCase() === "true",
+          sort_order: parseInt(values[headers.indexOf("sort_order")]) || 0,
+        });
+      }
+
+      if (products.length === 0) {
+        throw new Error("No valid products found in CSV");
+      }
+
+      // Import products one by one
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const product of products) {
+        try {
+          const { error } = await supabase.functions.invoke("admin-operations", {
+            body: { action: "create-product", token, data: product },
+          });
+          
+          if (error) {
+            failCount++;
+            console.error(`Failed to import ${product.name}:`, error);
+          } else {
+            successCount++;
+          }
+        } catch (err) {
+          failCount++;
+          console.error(`Failed to import ${product.name}:`, err);
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+
+      toast({
+        title: "Import completed",
+        description: `Successfully imported ${successCount} products. ${failCount > 0 ? `Failed: ${failCount}` : ""}`,
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "Import failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   if (productsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -174,23 +308,47 @@ const AdminProducts = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">Products</h1>
           <p className="text-muted-foreground mt-2">
             Manage your product catalog.
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={downloadTemplate}>
+            <Download className="h-4 w-4 mr-2" />
+            CSV Template
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleFileImport}
+            className="hidden"
+          />
+          <Button 
+            variant="outline" 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+          >
+            {isImporting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-2" />
+            )}
+            Import CSV
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) resetForm();
+          }}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
@@ -300,7 +458,8 @@ const AdminProducts = () => {
               </div>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
