@@ -1,132 +1,157 @@
+import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useAllCategories, useProducts } from "@/hooks/useProducts";
+import { Loader2 } from "lucide-react";
 import productsImage from "@/assets/products-main.jpg";
-import plasticPipesImage from "@/assets/plastic-pipes.jpg";
-import valvesImage from "@/assets/valves.jpg";
 
 const Products = () => {
-  const productCategories = [
-    {
-      title: "DI Spun Pipes",
-      description: "Ductile Iron Spun Pipes conforming to IS 8329",
-      image: productsImage,
-      specs: ["K-7, K-9 Class", "80mm to 1200mm diameter", "Push-on joints & flanged", "Socket & Spigot type"],
-    },
-    {
-      title: "CI Spun Pipes",
-      description: "Cast Iron Spun Pipes as per IS 1536",
-      image: productsImage,
-      specs: ["LA, A, B Class", "80mm to 300mm", "Socket & spigot joints", "Rubber ring joints"],
-    },
-    {
-      title: "Double Flanged Pipes",
-      description: "High-quality double flanged pipes for water supply",
-      image: productsImage,
-      specs: ["DI & MS options", "PN 10, PN 16 ratings", "Various diameters", "Epoxy coated"],
-    },
-    {
-      title: "MS & GI Pipes",
-      description: "Mild Steel and Galvanized Iron Pipes",
-      image: productsImage,
-      specs: ["Medium & heavy duty", "15mm to 300mm", "Threaded & plain ends", "ISI marked"],
-    },
-    {
-      title: "HDPE Pipes",
-      description: "High-Density Polyethylene Pipes conforming to IS 4984",
-      image: plasticPipesImage,
-      specs: ["PE 80, PE 100", "20mm to 630mm", "SDR 11, SDR 17", "UV resistant"],
-    },
-    {
-      title: "DWC Pipes",
-      description: "Double Wall Corrugated Pipes",
-      image: plasticPipesImage,
-      specs: ["SN4, SN8 stiffness", "110mm to 800mm", "Sewage & drainage", "High ring stiffness"],
-    },
-    {
-      title: "uPVC & cPVC Pipes",
-      description: "Unplasticized and Chlorinated PVC Pipes",
-      image: plasticPipesImage,
-      specs: ["Pressure & non-pressure", "20mm to 315mm", "Hot & cold water", "Solvent weld joints"],
-    },
-    {
-      title: "Fittings",
-      description: "Complete range of pipe fittings",
-      image: productsImage,
-      specs: ["Bends, Tees, Reducers", "Flanged fittings", "All material types", "Custom sizes available"],
-    },
-    {
-      title: "Valves",
-      description: "Industrial valves for all applications",
-      image: valvesImage,
-      specs: ["Butterfly valves", "Gate valves", "Non-return valves", "Pressure reducing valves"],
-    },
-    {
-      title: "Accessories",
-      description: "Pipe accessories and components",
-      image: productsImage,
-      specs: ["Joints & Collars", "Rubber rings", "Bolts & nuts", "Manhole covers"],
-    },
-    {
-      title: "Manhole Covers & Gratings",
-      description: "Heavy-duty covers and gratings",
-      image: productsImage,
-      specs: ["CI & DI material", "Class A to D", "Locking type", "Anti-theft design"],
-    },
-    {
-      title: "Water Meters",
-      description: "Accurate water measurement devices",
-      image: productsImage,
-      specs: ["15mm to 300mm", "Multi-jet & woltman", "Domestic & bulk", "Remote reading option"],
-    },
-  ];
+  const { categorySlug } = useParams();
+  const { data: products, isLoading: productsLoading } = useProducts();
+  const { data: categories, isLoading: categoriesLoading } = useAllCategories();
+
+  const isLoading = productsLoading || categoriesLoading;
+
+  // Get current category if we have a slug
+  const currentCategory = categorySlug
+    ? categories?.find((c) => c.slug === categorySlug)
+    : null;
+
+  // Filter products by category
+  const filteredProducts = currentCategory
+    ? products?.filter((p) => p.category_id === currentCategory.id)
+    : products;
+
+  // Get subcategories if viewing a parent category
+  const subcategories = currentCategory
+    ? categories?.filter((c) => c.parent_id === currentCategory.id)
+    : categories?.filter((c) => !c.parent_id);
+
+  // Get products in subcategories too
+  const subcategoryIds = subcategories?.map((c) => c.id) || [];
+  const allRelevantProducts = currentCategory
+    ? products?.filter(
+        (p) =>
+          p.category_id === currentCategory.id ||
+          subcategoryIds.includes(p.category_id || "")
+      )
+    : products;
+
+  const getCategoryName = (categoryId: string | null) => {
+    if (!categoryId) return "Uncategorized";
+    const category = categories?.find((c) => c.id === categoryId);
+    return category?.name || "Unknown";
+  };
+
+  if (isLoading) {
+    return (
+      <main className="py-12">
+        <div className="section-container flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="py-12">
       {/* Hero Section */}
       <section className="section-container mb-12">
         <div className="text-center max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Our Product Range</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">
+            {currentCategory ? currentCategory.name : "Our Product Range"}
+          </h1>
           <p className="text-xl text-muted-foreground">
-            Comprehensive piping solutions for water infrastructure and industrial applications
+            {currentCategory?.description ||
+              "Comprehensive piping solutions for water infrastructure and industrial applications"}
           </p>
         </div>
       </section>
 
+      {/* Subcategories */}
+      {subcategories && subcategories.length > 0 && (
+        <section className="section-container mb-12">
+          <h2 className="text-2xl font-bold mb-6">Categories</h2>
+          <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {subcategories.map((category) => {
+              const categoryProducts = products?.filter(
+                (p) => p.category_id === category.id
+              );
+              return (
+                <a
+                  key={category.id}
+                  href={`/products/${category.slug}`}
+                  className="block"
+                >
+                  <Card className="hover-lift h-full">
+                    <CardHeader>
+                      <CardTitle className="text-lg">{category.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {categoryProducts?.length || 0} products
+                      </p>
+                    </CardHeader>
+                    {category.description && (
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {category.description}
+                        </p>
+                      </CardContent>
+                    )}
+                  </Card>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Products Grid */}
       <section className="section-container">
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {productCategories.map((product, index) => (
-            <Card key={index} className="hover-lift overflow-hidden">
-              <div className="h-48 overflow-hidden">
-                <img
-                  src={product.image}
-                  alt={product.title}
-                  className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
-                />
-              </div>
-              <CardHeader>
-                <CardTitle className="flex items-start justify-between gap-2">
-                  <span>{product.title}</span>
-                  <Badge variant="secondary">Available</Badge>
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">{product.description}</p>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-primary">Key Specifications:</p>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    {product.specs.map((spec, idx) => (
-                      <li key={idx} className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-primary rounded-full" />
-                        {spec}
-                      </li>
-                    ))}
-                  </ul>
+        <h2 className="text-2xl font-bold mb-6">
+          {currentCategory ? "Products" : "All Products"}
+        </h2>
+        {allRelevantProducts && allRelevantProducts.length > 0 ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {allRelevantProducts.map((product) => (
+              <Card key={product.id} className="hover-lift overflow-hidden">
+                <div className="h-48 overflow-hidden bg-muted">
+                  <img
+                    src={product.image_url || productsImage}
+                    alt={product.name}
+                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = productsImage;
+                    }}
+                  />
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <CardHeader>
+                  <CardTitle className="flex items-start justify-between gap-2 text-base">
+                    <span className="line-clamp-2">{product.name}</span>
+                    {product.is_featured && (
+                      <Badge variant="default">Featured</Badge>
+                    )}
+                  </CardTitle>
+                  <Badge variant="secondary" className="w-fit">
+                    {getCategoryName(product.category_id)}
+                  </Badge>
+                </CardHeader>
+                {product.description && (
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {product.description}
+                    </p>
+                  </CardContent>
+                )}
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">
+              No products found{currentCategory ? " in this category" : ""}.
+            </p>
+          </Card>
+        )}
       </section>
 
       {/* Additional Info Section */}
@@ -135,7 +160,9 @@ const Products = () => {
           <CardContent className="py-12 text-center">
             <h2 className="text-3xl font-bold mb-4">Need Custom Solutions?</h2>
             <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-              We offer custom sizing, specifications, and bulk supply arrangements. Our technical team is ready to assist with your specific requirements.
+              We offer custom sizing, specifications, and bulk supply
+              arrangements. Our technical team is ready to assist with your
+              specific requirements.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <a href="tel:01204371172" className="inline-flex">
