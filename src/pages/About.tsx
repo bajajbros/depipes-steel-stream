@@ -6,7 +6,7 @@ const About = () => {
   const milestones = [
     { year: "1970s", event: "Founded under Sanghi Brothers by Late Shri Brij Mohan Sanghi" },
     { year: "1980s", event: "Became authorized distributors of Kesoram Spun Pipes" },
-    { year: "1990s", event: "Expanded partnership with Electrosteel Castings Ltd." },
+    { year: "1990s", event: "Expanded Distributorship with Electrosteel Castings Ltd." },
     { year: "2000s", event: "Incorporated as B.M. Sanghi Traders Pvt. Ltd., obtained ISO 9001:2015 certification" },
     { year: "2010s", event: "Added PRINCE PIPES & FITTINGS LTD and other major brands to portfolio" },
     { year: "Present", event: "Renamed to DE PIPES PRIVATE LIMITED, serving pan-India with complete piping solutions" },
@@ -142,7 +142,7 @@ const About = () => {
       {/* Partners Section */}
       <section className="bg-section-pattern py-20">
         <div className="section-container">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Our Brand Partners</h2>
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Our Brands</h2>
           <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
             Authorized distributors of India's most trusted piping brands
           </p>

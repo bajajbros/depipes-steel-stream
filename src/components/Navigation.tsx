@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Moon, Sun, Menu, Phone, Mail, ChevronDown } from "lucide-react";
 import { ProductsMegaMenu } from "./ProductsMegaMenu";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 export const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -12,6 +13,7 @@ export const Navigation = () => {
   const [showProductsMenu, setShowProductsMenu] = useState(false);
   const [showMobileProducts, setShowMobileProducts] = useState(false);
   const location = useLocation();
+  const { data: settings } = useSiteSettings();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -45,18 +47,23 @@ export const Navigation = () => {
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
 
+  const companyName = settings?.company_name || "DE PIPES PVT. LTD.";
+  const phone = settings?.phone || "0120-4371172";
+  const email = settings?.email || "info@sanghibrothers.com";
+  const logoUrl = settings?.logo_url;
+
   return (
     <>
       <div className="bg-primary text-primary-foreground py-2 text-sm">
         <div className="section-container flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <a href="tel:01204371172" className="flex items-center gap-2 hover:underline">
+            <a href={`tel:${phone.replace(/[^0-9+]/g, '')}`} className="flex items-center gap-2 hover:underline">
               <Phone className="h-4 w-4" />
-              <span className="hidden sm:inline">0120-4371172</span>
+              <span className="hidden sm:inline">{phone}</span>
             </a>
-            <a href="mailto:info@sanghibrothers.com" className="flex items-center gap-2 hover:underline">
+            <a href={`mailto:${email}`} className="flex items-center gap-2 hover:underline">
               <Mail className="h-4 w-4" />
-              <span className="hidden md:inline">info@sanghibrothers.com</span>
+              <span className="hidden md:inline">{email}</span>
             </a>
           </div>
           <div className="text-xs hidden md:block">ISO 9001:2015 Certified | 50+ Years of Excellence</div>
@@ -67,11 +74,15 @@ export const Navigation = () => {
         <nav className="section-container py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-xl">DP</span>
-              </div>
+              {logoUrl ? (
+                <img src={logoUrl} alt={companyName} className="h-12 w-auto object-contain" />
+              ) : (
+                <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+                  <span className="text-primary-foreground font-bold text-xl">DP</span>
+                </div>
+              )}
               <div className="hidden sm:block">
-                <h1 className="text-xl font-bold text-foreground">DE PIPES PVT. LTD.</h1>
+                <h1 className="text-xl font-bold text-foreground">{companyName}</h1>
                 <p className="text-xs text-muted-foreground">Piping Solutions Since 1970</p>
               </div>
             </Link>
