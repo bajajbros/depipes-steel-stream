@@ -14,7 +14,6 @@ const Clients = () => {
   ];
 
   const contractors = [
-    "Tata Projects Limited",
     "Suez India Private Limited",
     "Veolia India Private Limited",
     "GMR Infrastructure",
