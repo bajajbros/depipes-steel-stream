@@ -12,7 +12,7 @@ import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download, FolderArchive } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Package, Upload, Download, FolderArchive, Image as ImageIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
@@ -41,6 +41,7 @@ const AdminProducts = () => {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const imageImportRef = useRef<HTMLInputElement>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -60,6 +61,24 @@ const AdminProducts = () => {
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
   const [selectedParentCategory, setSelectedParentCategory] = useState<string>("");
+
+  // Bulk selection state
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
+  // Image import state
+  const [isImageImportOpen, setIsImageImportOpen] = useState(false);
+  const [importCategoryId, setImportCategoryId] = useState<string>("");
+  const [importSubcategoryId, setImportSubcategoryId] = useState<string>("");
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [isImageImporting, setIsImageImporting] = useState(false);
+  const [imageImportProgress, setImageImportProgress] = useState(0);
+
+  const parentCategories = categories?.filter((c) => !c.parent_id) || [];
+  const getSubcategories = (parentId: string) =>
+    categories?.filter((c) => c.parent_id === parentId) || [];
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -179,6 +198,183 @@ const AdminProducts = () => {
       .replace(/(^-|-$)/g, "");
   };
 
+  // Bulk selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked && products) {
+      setSelectedProducts(new Set(products.map((p) => p.id)));
+    } else {
+      setSelectedProducts(new Set());
+    }
+  };
+
+  const handleSelectProduct = (productId: string, checked: boolean) => {
+    const newSelection = new Set(selectedProducts);
+    if (checked) {
+      newSelection.add(productId);
+    } else {
+      newSelection.delete(productId);
+    }
+    setSelectedProducts(newSelection);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedProducts.size === 0) return;
+
+    setIsBulkDeleting(true);
+    const token = getToken();
+
+    try {
+      const deletePromises = Array.from(selectedProducts).map((id) =>
+        supabase.functions.invoke("admin-operations", {
+          body: { action: "delete-product", token, data: { id } },
+        })
+      );
+
+      await Promise.all(deletePromises);
+      
+      toast({
+        title: "Products deleted",
+        description: `${selectedProducts.size} products have been deleted.`,
+      });
+      
+      setSelectedProducts(new Set());
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete some products",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  };
+
+  // Image import handlers
+  const handleImagesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      setSelectedImages(Array.from(files));
+    }
+  };
+
+  const resetImageImport = () => {
+    setImportCategoryId("");
+    setImportSubcategoryId("");
+    setSelectedImages([]);
+    setImageImportProgress(0);
+    if (imageImportRef.current) {
+      imageImportRef.current.value = "";
+    }
+  };
+
+  const handleImageImport = async () => {
+    if (!importSubcategoryId && !importCategoryId) {
+      toast({
+        title: "Validation error",
+        description: "Please select a category",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (selectedImages.length === 0) {
+      toast({
+        title: "Validation error",
+        description: "Please select images",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsImageImporting(true);
+    setImageImportProgress(0);
+
+    const categoryId = importSubcategoryId || importCategoryId;
+    const total = selectedImages.length;
+    let completed = 0;
+    const token = getToken();
+
+    try {
+      for (const file of selectedImages) {
+        // Get product name from filename (without extension)
+        const productName = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+        const slug = generateSlugFromName(productName) + "-" + Date.now();
+
+        // Upload image to storage
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${generateSlugFromName(productName)}-${Date.now()}.${fileExt}`;
+        const filePath = `products/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("product-images")
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          toast({
+            title: "Upload failed",
+            description: `Failed to upload ${file.name}`,
+            variant: "destructive",
+          });
+          continue;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from("product-images")
+          .getPublicUrl(filePath);
+
+        // Create product
+        const { error } = await supabase.functions.invoke("admin-operations", {
+          body: {
+            action: "create-product",
+            token,
+            data: {
+              name: productName,
+              slug,
+              description: "",
+              specifications: "",
+              image_url: urlData.publicUrl,
+              category_id: categoryId,
+              is_featured: false,
+              sort_order: 0,
+            },
+          },
+        });
+
+        if (error) {
+          console.error("Product creation error:", error);
+          toast({
+            title: "Error",
+            description: `Failed to create product for ${file.name}`,
+            variant: "destructive",
+          });
+        }
+
+        completed++;
+        setImageImportProgress((completed / total) * 100);
+      }
+
+      toast({
+        title: "Import completed",
+        description: `${completed} products imported successfully`,
+      });
+      
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      setIsImageImportOpen(false);
+      resetImageImport();
+    } catch (error: any) {
+      toast({
+        title: "Import failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsImageImporting(false);
+    }
+  };
+
   const downloadTemplate = () => {
     const headers = ["name", "category_slug", "description", "specifications", "image_url", "is_featured", "sort_order"];
     const exampleRows = [
@@ -224,7 +420,7 @@ const AdminProducts = () => {
         }
       }
 
-      const products: any[] = [];
+      const productsData: any[] = [];
       
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].match(/("([^"]*)"|[^,]*)/g)?.map(v => 
@@ -236,7 +432,6 @@ const AdminProducts = () => {
         const name = values[headers.indexOf("name")] || "";
         const categorySlug = values[headers.indexOf("category_slug")] || "";
         
-        // Find category by slug
         let categoryId = null;
         if (categorySlug && categories) {
           const category = categories.find(c => c.slug === categorySlug);
@@ -245,7 +440,7 @@ const AdminProducts = () => {
           }
         }
 
-        products.push({
+        productsData.push({
           name,
           slug: generateSlugFromName(name),
           category_id: categoryId,
@@ -257,15 +452,14 @@ const AdminProducts = () => {
         });
       }
 
-      if (products.length === 0) {
+      if (productsData.length === 0) {
         throw new Error("No valid products found in CSV");
       }
 
-      // Import products one by one
       let successCount = 0;
       let failCount = 0;
 
-      for (const product of products) {
+      for (const product of productsData) {
         try {
           const { error } = await supabase.functions.invoke("admin-operations", {
             body: { action: "create-product", token, data: product },
@@ -319,10 +513,8 @@ const AdminProducts = () => {
     const token = getToken();
 
     try {
-      // Extract ZIP on client side
       const zip = await JSZip.loadAsync(file);
       
-      // Organize files by folder
       const folderContents: Record<string, { path: string; file: JSZip.JSZipObject }[]> = {};
       const rootImages: { path: string; file: JSZip.JSZipObject }[] = [];
 
@@ -343,7 +535,6 @@ const AdminProducts = () => {
         }
       }
 
-      // Calculate total files
       const allFiles: { path: string; file: JSZip.JSZipObject; categoryName: string | null }[] = [];
       
       for (const [folderName, images] of Object.entries(folderContents)) {
@@ -363,7 +554,6 @@ const AdminProducts = () => {
       let failCount = 0;
       const createdCategories = new Set<string>();
 
-      // Upload each image one by one
       for (let i = 0; i < allFiles.length; i++) {
         const { path, file: zipEntry, categoryName } = allFiles[i];
         const filename = path.split("/").pop()!;
@@ -376,19 +566,19 @@ const AdminProducts = () => {
           const blob = await zipEntry.async("blob");
           const imageFile = new File([blob], filename, { type: `image/${filename.split(".").pop()?.toLowerCase() || "jpeg"}` });
 
-          const formData = new FormData();
-          formData.append("file", imageFile);
-          formData.append("token", token || "");
-          formData.append("productName", productName);
+          const formDataUpload = new FormData();
+          formDataUpload.append("file", imageFile);
+          formDataUpload.append("token", token || "");
+          formDataUpload.append("productName", productName);
           if (categoryName) {
-            formData.append("categoryName", categoryName);
+            formDataUpload.append("categoryName", categoryName);
           }
           if (selectedParentCategory) {
-            formData.append("parentCategoryId", selectedParentCategory);
+            formDataUpload.append("parentCategoryId", selectedParentCategory);
           }
 
           const { data, error } = await supabase.functions.invoke("import-zip", {
-            body: formData,
+            body: formDataUpload,
           });
 
           if (error) {
@@ -433,6 +623,9 @@ const AdminProducts = () => {
     }
   };
 
+  const isAllSelected = products && products.length > 0 && selectedProducts.size === products.length;
+  const isSomeSelected = selectedProducts.size > 0;
+
   if (productsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -451,6 +644,20 @@ const AdminProducts = () => {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {isSomeSelected && (
+            <Button
+              variant="destructive"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              disabled={isBulkDeleting}
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Selected ({selectedProducts.size})
+            </Button>
+          )}
           <Button variant="outline" onClick={downloadTemplate}>
             <Download className="h-4 w-4 mr-2" />
             CSV Template
@@ -491,7 +698,7 @@ const AdminProducts = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_none">No parent</SelectItem>
-                {categories?.filter(c => !c.parent_id).map((cat) => (
+                {parentCategories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>
                     {cat.name}
                   </SelectItem>
@@ -501,6 +708,7 @@ const AdminProducts = () => {
             <Button 
               onClick={() => zipInputRef.current?.click()}
               disabled={isImportingZip}
+              variant="outline"
             >
               {isImportingZip ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -516,6 +724,128 @@ const AdminProducts = () => {
               <p className="text-xs text-muted-foreground truncate">{importStatus}</p>
             </div>
           )}
+
+          {/* Image Import Dialog */}
+          <Dialog open={isImageImportOpen} onOpenChange={setIsImageImportOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <ImageIcon className="h-4 w-4 mr-2" />
+                Import Images
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Import Products from Images</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select
+                    value={importCategoryId || "_none"}
+                    onValueChange={(value) => {
+                      setImportCategoryId(value === "_none" ? "" : value);
+                      setImportSubcategoryId("");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Select category</SelectItem>
+                      {parentCategories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {importCategoryId && getSubcategories(importCategoryId).length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Subcategory</Label>
+                    <Select
+                      value={importSubcategoryId || "_none"}
+                      onValueChange={(value) => setImportSubcategoryId(value === "_none" ? "" : value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select subcategory" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">No subcategory</SelectItem>
+                        {getSubcategories(importCategoryId).map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Select Images</Label>
+                  <Input
+                    ref={imageImportRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImagesSelected}
+                  />
+                  {selectedImages.length > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {selectedImages.length} images selected
+                    </p>
+                  )}
+                </div>
+
+                {selectedImages.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto space-y-1 border rounded p-2">
+                    {selectedImages.map((file, index) => (
+                      <div key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                        <ImageIcon className="h-3 w-3" />
+                        {file.name.replace(/\.[^/.]+$/, "")}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isImageImporting && (
+                  <div className="space-y-2">
+                    <Progress value={imageImportProgress} />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Importing... {Math.round(imageImportProgress)}%
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsImageImportOpen(false);
+                      resetImageImport();
+                    }}
+                    disabled={isImageImporting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleImageImport}
+                    disabled={isImageImporting || selectedImages.length === 0 || (!importCategoryId && !importSubcategoryId)}
+                  >
+                    {isImageImporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Import {selectedImages.length} Products
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) resetForm();
@@ -641,9 +971,23 @@ const AdminProducts = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            All Products ({products?.length || 0})
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              All Products ({products?.length || 0})
+            </div>
+            {products && products.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="select-all"
+                  checked={isAllSelected}
+                  onCheckedChange={handleSelectAll}
+                />
+                <Label htmlFor="select-all" className="text-sm font-normal cursor-pointer">
+                  Select All
+                </Label>
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -659,6 +1003,10 @@ const AdminProducts = () => {
                   className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
                 >
                   <div className="flex items-center gap-4">
+                    <Checkbox
+                      checked={selectedProducts.has(product.id)}
+                      onCheckedChange={(checked) => handleSelectProduct(product.id, !!checked)}
+                    />
                     {product.image_url ? (
                       <img
                         src={product.image_url}
@@ -720,6 +1068,29 @@ const AdminProducts = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedProducts.size} Products?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all selected products. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isBulkDeleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Delete All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
