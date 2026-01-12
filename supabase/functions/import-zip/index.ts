@@ -33,7 +33,7 @@ serve(async (req) => {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const token = formData.get("token") as string;
-    const productName = formData.get("productName") as string;
+    const subcategoryName = formData.get("subcategoryName") as string;
     const categoryId = formData.get("categoryId") as string | null;
     const categoryName = formData.get("categoryName") as string | null;
     const parentCategoryId = formData.get("parentCategoryId") as string | null;
@@ -66,6 +66,7 @@ serve(async (req) => {
         .from("product_categories")
         .select("id")
         .eq("slug", categorySlug)
+        .is("parent_id", null)
         .maybeSingle();
 
       if (existingCategory) {
@@ -91,7 +92,7 @@ serve(async (req) => {
 
     // Upload image to storage
     const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const storagePath = `products/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const storagePath = `categories/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
     
     const arrayBuffer = await file.arrayBuffer();
     const { error: uploadError } = await supabase.storage
@@ -113,23 +114,23 @@ serve(async (req) => {
       .from("product-images")
       .getPublicUrl(storagePath);
 
-    // Create product
-    const slug = generateSlug(productName) + "-" + Date.now().toString(36);
-    const { error: productError, data: product } = await supabase
-      .from("products")
+    // Create subcategory (as product) with image
+    const slug = generateSlug(subcategoryName) + "-" + Date.now().toString(36);
+    const { error: subcatError, data: subcategory } = await supabase
+      .from("product_categories")
       .insert({
-        name: productName,
+        name: subcategoryName,
         slug,
-        category_id: actualCategoryId || null,
+        parent_id: actualCategoryId || null,
         image_url: urlData.publicUrl,
       })
       .select()
       .single();
 
-    if (productError) {
-      console.error("Product creation error:", productError);
+    if (subcatError) {
+      console.error("Subcategory creation error:", subcatError);
       return new Response(
-        JSON.stringify({ error: `Product creation failed: ${productError.message}` }),
+        JSON.stringify({ error: `Subcategory creation failed: ${subcatError.message}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -137,7 +138,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        product,
+        subcategory,
         categoryCreated: categoryName && !categoryId && actualCategoryId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
