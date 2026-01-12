@@ -1,46 +1,38 @@
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { useAllCategories, useProducts } from "@/hooks/useProducts";
+import { useAllCategories } from "@/hooks/useProducts";
 import { Loader2 } from "lucide-react";
 import productsImage from "@/assets/products-main.jpg";
 
 const Products = () => {
   const { categorySlug } = useParams();
-  const { data: products, isLoading: productsLoading } = useProducts();
-  const { data: categories, isLoading: categoriesLoading } = useAllCategories();
-
-  const isLoading = productsLoading || categoriesLoading;
+  const { data: categories, isLoading } = useAllCategories();
 
   // Get current category if we have a slug
   const currentCategory = categorySlug
     ? categories?.find((c) => c.slug === categorySlug)
     : null;
 
-  // Filter products by category
-  const filteredProducts = currentCategory
-    ? products?.filter((p) => p.category_id === currentCategory.id)
-    : products;
+  // Parent categories (main sections)
+  const parentCategories = categories?.filter((c) => !c.parent_id) || [];
 
-  // Get subcategories if viewing a parent category
-  const subcategories = currentCategory
-    ? categories?.filter((c) => c.parent_id === currentCategory.id)
-    : categories?.filter((c) => !c.parent_id);
+  // If viewing a parent category, get its subcategories (products)
+  // If viewing a subcategory, redirect to parent with this as highlight
+  const isParentCategory = currentCategory && !currentCategory.parent_id;
+  const isSubcategory = currentCategory && currentCategory.parent_id;
 
-  // Get products in subcategories too
-  const subcategoryIds = subcategories?.map((c) => c.id) || [];
-  const allRelevantProducts = currentCategory
-    ? products?.filter(
-        (p) =>
-          p.category_id === currentCategory.id ||
-          subcategoryIds.includes(p.category_id || "")
-      )
-    : products;
+  // Get products (subcategories) to display
+  let productsToShow = isParentCategory
+    ? categories?.filter((c) => c.parent_id === currentCategory.id) || []
+    : isSubcategory
+    ? categories?.filter((c) => c.parent_id === currentCategory.parent_id) || []
+    : categories?.filter((c) => c.parent_id) || []; // All products
 
-  const getCategoryName = (categoryId: string | null) => {
-    if (!categoryId) return "Uncategorized";
-    const category = categories?.find((c) => c.id === categoryId);
-    return category?.name || "Unknown";
+  // Get the parent category name for subcategory display
+  const getParentName = (parentId: string | null) => {
+    if (!parentId) return "";
+    const parent = categories?.find((c) => c.id === parentId);
+    return parent?.name || "";
   };
 
   if (isLoading) {
@@ -68,22 +60,18 @@ const Products = () => {
         </div>
       </section>
 
-      {/* Subcategories */}
-      {subcategories && subcategories.length > 0 && (
+      {/* Category Navigation - only show if not viewing a specific category */}
+      {!currentCategory && parentCategories.length > 0 && (
         <section className="section-container mb-12">
           <h2 className="text-2xl font-bold mb-6">Categories</h2>
           <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {subcategories.map((category) => {
-              const categoryProducts = products?.filter(
-                (p) => p.category_id === category.id
+            {parentCategories.map((category) => {
+              const categoryProducts = categories?.filter(
+                (c) => c.parent_id === category.id
               );
               return (
-                <a
-                  key={category.id}
-                  href={`/products/${category.slug}`}
-                  className="block"
-                >
-                  <Card className="hover-lift h-full">
+                <Link key={category.id} to={`/products/${category.slug}`} className="block">
+                  <Card className="hover-lift h-full transition-all hover:border-primary">
                     <CardHeader>
                       <CardTitle className="text-lg">{category.name}</CardTitle>
                       <p className="text-sm text-muted-foreground">
@@ -98,42 +86,39 @@ const Products = () => {
                       </CardContent>
                     )}
                   </Card>
-                </a>
+                </Link>
               );
             })}
           </div>
         </section>
       )}
 
-      {/* Products Grid */}
+      {/* Products Grid (Subcategories displayed as product cards) */}
       <section className="section-container">
         <h2 className="text-2xl font-bold mb-6">
           {currentCategory ? "Products" : "All Products"}
         </h2>
-        {allRelevantProducts && allRelevantProducts.length > 0 ? (
+        {productsToShow.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {allRelevantProducts.map((product) => (
-              <Card key={product.id} className="hover-lift overflow-hidden">
+            {productsToShow.map((product) => (
+              <Card key={product.id} className="hover-lift overflow-hidden group">
                 <div className="h-48 overflow-hidden bg-muted">
                   <img
                     src={product.image_url || productsImage}
                     alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = productsImage;
                     }}
                   />
                 </div>
                 <CardHeader>
-                  <CardTitle className="flex items-start justify-between gap-2 text-base">
-                    <span className="line-clamp-2">{product.name}</span>
-                    {product.is_featured && (
-                      <Badge variant="default">Featured</Badge>
-                    )}
-                  </CardTitle>
-                  <Badge variant="secondary" className="w-fit">
-                    {getCategoryName(product.category_id)}
-                  </Badge>
+                  <CardTitle className="text-base line-clamp-2">{product.name}</CardTitle>
+                  {!currentCategory && product.parent_id && (
+                    <p className="text-sm text-muted-foreground">
+                      {getParentName(product.parent_id)}
+                    </p>
+                  )}
                 </CardHeader>
                 {product.description && (
                   <CardContent>
@@ -160,9 +145,8 @@ const Products = () => {
           <CardContent className="py-12 text-center">
             <h2 className="text-3xl font-bold mb-4">Need Custom Solutions?</h2>
             <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-              We offer custom sizing, specifications, and bulk supply
-              arrangements. Our technical team is ready to assist with your
-              specific requirements.
+              We offer custom sizing, specifications, and bulk supply arrangements. Our technical
+              team is ready to assist with your specific requirements.
             </p>
             <div className="flex flex-wrap gap-4 justify-center">
               <a href="tel:01204371172" className="inline-flex">

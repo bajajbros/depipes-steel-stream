@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { 
   LayoutDashboard, 
   Settings, 
-  Package, 
   FolderTree, 
   LogOut,
   Menu
@@ -40,8 +39,7 @@ const AdminDashboard = () => {
   const navItems = [
     { name: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
     { name: "Site Settings", path: "/admin/dashboard/settings", icon: Settings },
-    { name: "Categories", path: "/admin/dashboard/categories", icon: FolderTree },
-    { name: "Products", path: "/admin/dashboard/products", icon: Package },
+    { name: "Categories & Products", path: "/admin/dashboard/categories", icon: FolderTree },
   ];
 
   const isActive = (path: string) => location.pathname === path;

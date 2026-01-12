@@ -19,7 +19,6 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminOverview from "./pages/admin/AdminOverview";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminCategories from "./pages/admin/AdminCategories";
-import AdminProducts from "./pages/admin/AdminProducts";
 
 const queryClient = new QueryClient();
 
@@ -36,7 +35,6 @@ const App = () => (
             <Route index element={<AdminOverview />} />
             <Route path="settings" element={<AdminSettings />} />
             <Route path="categories" element={<AdminCategories />} />
-            <Route path="products" element={<AdminProducts />} />
           </Route>
 
           {/* Public Routes */}

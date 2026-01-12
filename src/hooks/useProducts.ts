@@ -14,20 +14,6 @@ export interface ProductCategory {
   subcategories?: ProductCategory[];
 }
 
-export interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  specifications: string | null;
-  image_url: string | null;
-  category_id: string | null;
-  is_featured: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
 export const useCategories = () => {
   return useQuery({
     queryKey: ["product-categories"],
@@ -66,49 +52,48 @@ export const useAllCategories = () => {
   });
 };
 
-export const useProducts = (categoryId?: string) => {
+// Get all products (subcategories with parent_id)
+export const useProducts = () => {
   return useQuery({
-    queryKey: ["products", categoryId],
+    queryKey: ["products"],
     queryFn: async () => {
-      let query = supabase
-        .from("products")
+      const { data, error } = await supabase
+        .from("product_categories")
         .select("*")
+        .not("parent_id", "is", null)
         .order("sort_order", { ascending: true });
 
-      if (categoryId) {
-        query = query.eq("category_id", categoryId);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-      return data as Product[];
+      return data as ProductCategory[];
     },
   });
 };
 
+// Get products by parent category slug
 export const useProductsByCategory = (categorySlug: string) => {
   return useQuery({
     queryKey: ["products-by-category", categorySlug],
     queryFn: async () => {
-      // First get the category
+      // First get the parent category
       const { data: category, error: categoryError } = await supabase
         .from("product_categories")
         .select("id")
         .eq("slug", categorySlug)
+        .is("parent_id", null)
         .maybeSingle();
 
       if (categoryError) throw categoryError;
       if (!category) return [];
 
-      // Get products for this category
+      // Get subcategories (products) for this parent
       const { data, error } = await supabase
-        .from("products")
+        .from("product_categories")
         .select("*")
-        .eq("category_id", category.id)
+        .eq("parent_id", category.id)
         .order("sort_order", { ascending: true });
 
       if (error) throw error;
-      return data as Product[];
+      return data as ProductCategory[];
     },
     enabled: !!categorySlug,
   });
