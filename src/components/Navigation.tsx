@@ -75,12 +75,19 @@ export const Navigation = () => {
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center gap-3">
               {logoUrl ? (
-                <img src={logoUrl} alt={companyName} className="h-12 w-auto object-contain" />
-              ) : (
-                <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-xl">DP</span>
-                </div>
-              )}
+                <img 
+                  src={logoUrl} 
+                  alt={companyName} 
+                  className="h-12 w-auto object-contain" 
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div className={`w-12 h-12 bg-primary rounded-lg flex items-center justify-center ${logoUrl ? 'hidden' : ''}`}>
+                <span className="text-primary-foreground font-bold text-xl">DP</span>
+              </div>
               <div className="hidden sm:block">
                 <h1 className="text-xl font-bold text-foreground">{companyName}</h1>
                 <p className="text-xs text-muted-foreground">Piping Solutions Since 1970</p>

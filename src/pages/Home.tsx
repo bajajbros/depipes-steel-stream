@@ -1,14 +1,20 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowRight, CheckCircle, Award, Truck, Users, Shield, Building2, Factory, Wrench, FileCheck } from "lucide-react";
+import { ArrowRight, CheckCircle, Award, Truck, Users, Shield, Building2, Factory, Wrench, FileCheck, Package } from "lucide-react";
 import heroImage from "@/assets/hero-pipes.jpg";
 import warehouseImage from "@/assets/warehouse.jpg";
 import productsImage from "@/assets/products-main.jpg";
-import plasticPipesImage from "@/assets/plastic-pipes.jpg";
-import valvesImage from "@/assets/valves.jpg";
+import { useAllCategories } from "@/hooks/useProducts";
 
 const Home = () => {
+  const { data: allCategories = [], isLoading: categoriesLoading } = useAllCategories();
+  
+  // Get subcategories (products) - those with parent_id, limit to 6
+  const productCategories = allCategories
+    .filter(cat => cat.parent_id !== null && cat.image_url)
+    .slice(0, 6);
+
   const values = [
     { icon: Shield, title: "Quality Assurance", description: "ISO 9001:2015 certified products meeting international standards" },
     { icon: Truck, title: "Swift Deliveries", description: "Pan-India presence ensuring timely delivery to your doorstep" },
@@ -21,15 +27,6 @@ const Home = () => {
     "Complete solution for water infrastructure",
     "Government-approved supplier",
     "Competitive pricing & transparent dealings",
-  ];
-
-  const productCategories = [
-    { name: "DI Spun Pipes", icon: Factory, description: "K7, K9 & K12 class pipes for water infrastructure", image: heroImage },
-    { name: "CI Spun Pipes", icon: Building2, description: "Durable cast iron pipes for various applications", image: heroImage },
-    { name: "MS & GI Pipes", icon: Wrench, description: "Mild Steel & Galvanised Iron piping solutions", image: productsImage },
-    { name: "HDPE & DWC Pipes", icon: Factory, description: "High-density polyethylene & double wall corrugated", image: plasticPipesImage },
-    { name: "uPVC/cPVC Pipes", icon: Building2, description: "Plumbing and drainage solutions", image: plasticPipesImage },
-    { name: "Valves & Fittings", icon: Wrench, description: "Complete range of valves and pipe fittings", image: valvesImage },
   ];
 
   const partners = [
@@ -165,35 +162,55 @@ const Home = () => {
             Comprehensive piping solutions for water infrastructure, industrial, and construction projects
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {productCategories.map((product, index) => (
-            <Card key={index} className="hover-lift overflow-hidden group">
-              <div className="relative h-48 overflow-hidden">
-                <img 
-                  src={product.image} 
-                  alt={`${product.name} - industrial piping solutions`}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
-              </div>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <product.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <h3 className="font-bold text-lg">{product.name}</h3>
+        {categoriesLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Card key={i} className="overflow-hidden animate-pulse">
+                <div className="h-48 bg-muted" />
+                <CardContent className="pt-6">
+                  <div className="h-6 bg-muted rounded w-3/4 mb-3" />
+                  <div className="h-4 bg-muted rounded w-full mb-2" />
+                  <div className="h-4 bg-muted rounded w-2/3" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : productCategories.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {productCategories.map((product) => (
+              <Card key={product.id} className="hover-lift overflow-hidden group">
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={product.image_url || heroImage} 
+                    alt={`${product.name} - industrial piping solutions`}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
                 </div>
-                <p className="text-muted-foreground text-sm mb-4">{product.description}</p>
-                <Link to="/products">
-                  <Button variant="ghost" size="sm" className="group/btn">
-                    View Details
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <Package className="h-5 w-5 text-primary" />
+                    </div>
+                    <h3 className="font-bold text-lg">{product.name}</h3>
+                  </div>
+                  <p className="text-muted-foreground text-sm mb-4">{product.description || "Quality piping solutions"}</p>
+                  <Link to={`/products?category=${product.slug}`}>
+                    <Button variant="ghost" size="sm" className="group/btn">
+                      View Details
+                      <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <Package className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Products coming soon...</p>
+          </div>
+        )}
         <div className="text-center mt-12">
           <Link to="/products">
             <Button size="lg">
